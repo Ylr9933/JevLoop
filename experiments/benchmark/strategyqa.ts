@@ -3,9 +3,11 @@
  * reasoning, and the dataset that gives the `noul` primitive its
  * calibration labels (PLAN §Benchmark).
  *
- * Source: `strategyqa_train.json` from the official repository (the
- * ReWOO subset also draws from the train file), downloaded by
- * `scripts/fetch.ts` into `experiments/dataset/strategyqa/`.
+ * Two input shapes, tried in order: the official `strategyqa_train.json`
+ * (array of `{question, answer: boolean, facts}`) or a datasets-server
+ * rows export (array where `answer` may be boolean or "true"/"false"
+ * strings). Provenance of whichever served is in SOURCES.json — numbers
+ * cite it, not this comment.
  *
  * @module JevLoop/strategyqa
  */
@@ -18,31 +20,43 @@ import type { Benchmark, Task } from './task.ts'
 const SYSTEM =
   'Answer the question with only the single word Yes or No. Do not explain.'
 
-/** A free-form answer still counts when it leads with the verdict word. */
-function yesNo(answer: string): string | null {
-  const m = answer.toLowerCase().match(/\b(yes|no)\b/)
-  return m ? m[1]! : null
+/** Both known shapes of this dataset: official JSON and rows exports. */
+function parseOfficial(items: unknown): Task[] {
+  const arr = Array.isArray(items) ? items : []
+  return arr
+    .map((item, i): Task | null => {
+      const o = item as { question?: unknown; answer?: unknown; facts?: unknown; id?: unknown }
+      if (typeof o.question !== 'string' || o.question.trim() === '') return null
+      let yes: boolean | null = null
+      if (typeof o.answer === 'boolean') yes = o.answer
+      else if (typeof o.answer === 'string') {
+        const a = o.answer.trim().toLowerCase()
+        if (a === 'true' || a === 'yes') yes = true
+        else if (a === 'false' || a === 'no') yes = false
+      }
+      if (yes === null) return null
+      const idx = typeof o.id === 'string' && o.id !== '' ? o.id : String(i).padStart(4, '0')
+      return {
+        id: `strategyqa_${idx}`,
+        question: o.question.trim(),
+        gold: [yes ? 'yes' : 'no'],
+        meta: { facts: Array.isArray(o.facts) ? (o.facts as string[]) : null },
+      }
+    })
+    .filter((t): t is Task => t !== null)
 }
 
 export const strategyqa: Benchmark = {
   name: 'strategyqa',
   split: 'train',
-  version: 'recorded-at-fetch',
+  version: 'see experiments/dataset/strategyqa/SOURCES.json',
   async load(dir: string): Promise<Task[]> {
-    const raw = JSON.parse(readFileSync(join(dir, 'strategyqa_train.json'), 'utf8')) as Array<{
-      question: string
-      answer: boolean
-      facts?: string[]
-      id?: string
-    }>
-    return raw
-      .filter((item) => typeof item.question === 'string')
-      .map((item, i) => ({
-        id: `strategyqa_${item.id ?? String(i).padStart(4, '0')}`,
-        question: item.question.trim(),
-        gold: [item.answer ? 'yes' : 'no'],
-        meta: { facts: item.facts ?? null },
-      }))
+    try {
+      return parseOfficial(JSON.parse(readFileSync(join(dir, 'strategyqa_train.json'), 'utf8')) as unknown)
+    } catch {
+      const exported = JSON.parse(readFileSync(join(dir, 'strategyqa_rows.json'), 'utf8')) as { rows: unknown[] }
+      return parseOfficial(exported.rows)
+    }
   },
   prompts: {
     build(task: Task): { system: string; user: string } {
@@ -50,7 +64,7 @@ export const strategyqa: Benchmark = {
     },
   },
   score(task: Task, answer: string): boolean {
-    const verdict = yesNo(answer)
-    return verdict !== null && verdict === task.gold[0]?.toLowerCase()
+    const verdict = answer.toLowerCase().match(/\b(yes|no)\b/)
+    return verdict !== null && verdict[1] === task.gold[0]?.toLowerCase()
   },
 }

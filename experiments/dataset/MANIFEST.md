@@ -43,7 +43,7 @@
 | **MCP-AgentBench** | **只取 single-server** | `待核`（multi-server ~128 个工具 → **超出候选上界，不取**）| | ⚠️ 待核 |
 | **RAGTruth** | span 级「有没有证据支持」→ `canDeliver` | `待核` | | ⚠️ 待核 |
 | **TruthfulQA** | 拒答 / 幻觉标签 | `待核` | | ⚠️ 待核 |
-| **GSM8K** | **预期 direct 很高**，用来让附录那张表有下行 | ReWOO 用 **1000 条子集** | EvalScope 里也有一份，可交叉核对 | ⚠️ 总量待核 |
+| **GSM8K** | **预期 direct 很高**，用来让附录那张表有下行 | ReWOO 用 **1000 条子集**；**test 划分 1,319 条**（2026-09-21 实取核对，sha256 `3730d3…39d14`，源 `openai/grade-school-math@master` 的 `grade_school_math/data/test.jsonl`，经 jsdelivr CDN 取回，见 `experiments/dataset/gsm8k/SOURCES.json`） | EvalScope 里也有一份，可交叉核对 | ✅ test 已核 |
 | **SportsUnderstanding** | 同上 | ReWOO 用 **300 条子集** | BigBench | ⚠️ 待核 |
 | **PhysicsQuestions** | **53 条，低于 ≥300 底线** → 只用于 direct 分档 | ReWOO 用 **53 条** | 这一行标注「不足以画逐节点曲线」| ⚠️ 待核 |
 

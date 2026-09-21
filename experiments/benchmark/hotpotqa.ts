@@ -24,21 +24,33 @@ const SYSTEM =
 export const hotpotqa: Benchmark = {
   name: 'hotpotqa',
   split: 'dev_distractor',
-  version: 'v1.0 (dev_distractor, fetched-at-see-SOURCES)',
+  version: 'see experiments/dataset/hotpotqa/SOURCES.json (official file preferred over a rows export)',
   async load(dir: string): Promise<Task[]> {
-    const raw = JSON.parse(readFileSync(join(dir, 'hotpot_dev_distractor_v1.json'), 'utf8')) as Array<{
-      _id: string
-      question: string
-      answer: string
-      level?: string
-      type?: string
-    }>
-    return raw.map((item) => ({
-      id: `hotpotqa_${item._id}`,
-      question: item.question.trim(),
-      gold: [item.answer.trim()],
-      meta: { level: item.level ?? null, type: item.type ?? null },
-    }))
+    try {
+      const raw = JSON.parse(readFileSync(join(dir, 'hotpot_dev_distractor_v1.json'), 'utf8')) as Array<{
+        _id: string
+        question: string
+        answer: string
+        level?: string
+        type?: string
+      }>
+      return raw.map((item) => ({
+        id: `hotpotqa_${item._id}`,
+        question: item.question.trim(),
+        gold: [item.answer.trim()],
+        meta: { level: item.level ?? null, type: item.type ?? null, source: 'official_dev_json' },
+      }))
+    } catch {
+      const exported = JSON.parse(readFileSync(join(dir, 'hotpot_rows.json'), 'utf8')) as {
+        rows: Array<{ id: string; question: string; answer: string; level?: string; type?: string }>
+      }
+      return exported.rows.map((item) => ({
+        id: `hotpotqa_${item.id}`,
+        question: String(item.question).trim(),
+        gold: [String(item.answer).trim()],
+        meta: { level: item.level ?? null, type: item.type ?? null, source: 'datasets_server_rows' },
+      }))
+    }
   },
   prompts: {
     build(task: Task): { system: string; user: string } {
