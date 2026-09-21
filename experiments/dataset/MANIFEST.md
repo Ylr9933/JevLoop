@@ -33,9 +33,9 @@
 | **τ³-bench**（扩展）| 只取 `banking_knowledge` | **375** = airline 50 + retail 114 + telecom 114 + **banking 97**；banking 带 **698** 份政策文档 | 作为 τ² 的扩展域，不单独跑全套 | ✅ |
 | **AppWorld** | `Test-N` 迭代，`Test-C` 头条 | **750** = 250 场景 × 3；**Train 105 / Dev 60 / Test-N 168 / Test-C 417**；**9 个 app，457 个 API，101 张表** | repo `stonybrooknlp/appworld`；**离线 + 固定种子 + 冻结时间** | ✅ |
 | **Terminal-Bench** | 一小块当成本仪器 + 边界反例 | TB **2.0 = 89 任务**；**4.0 删了 8 题、修了 19 题、统一 8 小时超时** | ★ **语义化版本**（major = 必须重跑 / minor = 只重判 / patch = 结果可复用）；家族 15 个月从 **1.0（2025-05-19）走到 4.0（2026-08-28）** | ⚠️ 3.0 / 4.0 题数**待核** |
-| **HotpotQA** | ReAct 原设置 | **总量 113k** 问答对，**带句级支撑事实**；ReWOO 用的是 **1000 条子集** | ReAct 原仓库的 whoosh 索引脚本 | ✅ 总量<br>⚠️ 划分待核 |
+| **HotpotQA** | ReAct 原设置 | **总量 113k** 问答对，**带句级支撑事实**；ReWOO 用的是 **1000 条子集** | ReAct 原仓库的 whoosh 索引脚本。**2026-09-21 下载失败（实测）**：官方唯一原始文件主机 `curtis.ml.cmu.edu`（http/https 都试）不可达；HF datasets-server 超时。fallback 链在 `scripts/fetch.ts`，换网络后重跑 `fetch.ts hotpotqa` | ✅ 总量<br>⚠️ 划分待核 |
 | **TriviaQA** | 同 HotpotQA 工具集 | ReWOO 用 **1000 条子集** | ⚠️ **他们的设置是「把 reading context 藏起来强迫检索」** —— 复现时必须照做，否则不是同一个任务 | ⚠️ 总量待核 |
-| **StrategyQA** | 二值 → `noul` 标签 | ReWOO 用 **300 条子集** | ⚠️ 总量待核 | ⚠️ 待核 |
+| **StrategyQA** | 二值 → `noul` 标签 | ReWOO 用 **300 条子集** | ⚠️ 总量待核。**2026-09-21 下载失败（实测）**：`allenai/strategyqa` 仓库根无 README/数据文件（raw GitHub 与 jsdelivr 都核过）、GCS 桶路径猜测 404（GCS 本身可达）、HF datasets-server 超时。候选 URL 链在 `scripts/fetch.ts`，换网络后重跑 `fetch.ts strategyqa` | ⚠️ 待核 |
 | **ALFWorld** | 官方 eval = unseen | **3,553** train；**140 seen + 134 unseen** eval；**6 类任务**，120 个房间 | 纯文本模式（TextWorld）；**官方带专家轨迹** → 步级标签 | ✅ |
 | **2WikiMultiHopQA** | 多跳，带推理路径 | 总量 `待核`（常见引用的 192,606 **未在原始摘要里核到**）| ★ **带 evidence / reasoning path 标注** → 步级标签免费 | ⚠️ 待核 |
 | **MuSiQue** | 多跳 | **MuSiQue-Ans 25K**（2–4 跳）；**MuSiQue-Full** 另加**不可回答**的对照题 | 自底向上合成，**构造上保证不是捷径可解** | ✅ |
