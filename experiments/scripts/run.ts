@@ -32,10 +32,12 @@ import { gsm8k } from '../benchmark/gsm8k.ts'
 import { hotpotqa } from '../benchmark/hotpotqa.ts'
 import { strategyqa } from '../benchmark/strategyqa.ts'
 import { runDirect } from '../baseline/direct.ts'
+import { disposeJevLoopArm, runJevLoop, type JevConfig } from '../baseline/jevloop.ts'
+import { readJevKey } from './jev-key.ts'
 
 /** Registry instead of dynamic import — names must stay the README §3 spelling. */
 const BENCHMARKS: Record<string, Benchmark> = { gsm8k, hotpotqa, strategyqa }
-const ARMS = ['direct'] as const
+const ARMS = ['direct', 'jevloop'] as const
 type Arm = (typeof ARMS)[number]
 
 interface Cli {
@@ -55,6 +57,10 @@ interface Cli {
   region: string
   priceIn: number
   priceOut: number
+  jevKeyFile?: string
+  jevBaseUrl: string
+  jevModel: string
+  maxSteps: number
 }
 
 function parseArgs(argv: string[]): Cli {
@@ -91,6 +97,10 @@ function parseArgs(argv: string[]): Cli {
     region: out['region'] ?? 'unknown',
     priceIn: num('price-in', 0),
     priceOut: num('price-out', 0),
+    jevKeyFile: out['jev-key-file'],
+    jevBaseUrl: out['jev-base-url'] ?? 'https://api.typesafe.ai',
+    jevModel: out['jev-model'] ?? 'jev-latest',
+    maxSteps: num('max-steps', 8),
   }
 }
 
@@ -109,6 +119,23 @@ function gitInfo(): { commit: string; dirty: boolean } {
 
 function utcStamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-')
+}
+
+/** One noul question to Jev, via the kernel's own HttpProvider — the same path the arm takes. */
+async function jevPing(jev: JevConfig): Promise<{ ok: boolean; model?: string; ms: number; reason?: string }> {
+  const { HttpProvider } = await import('../../src/provider-http.ts')
+  const provider = new HttpProvider({ baseUrl: jev.baseUrl, apiKey: jev.apiKey, defaultModel: jev.model, name: 'jev-probe', timeoutMs: jev.timeoutMs })
+  const t0 = performance.now()
+  try {
+    const res = await provider.decide({
+      state: { task: 'connectivity probe', context: 'ping' },
+      questions: { up: { type: 'noul', instructions: 'Is this a connectivity probe?', criteria: { true: 'It is a ping', false: 'It is not a ping' } } },
+      timeoutMs: jev.timeoutMs,
+    })
+    return { ok: !res.degraded, model: res.model, ms: Math.round(performance.now() - t0) }
+  } catch (err) {
+    return { ok: false, ms: Math.round(performance.now() - t0), reason: (err as Error).message.slice(0, 200) }
+  }
 }
 
 class Tee {
@@ -212,6 +239,29 @@ async function main(): Promise<number> {
   cfg.wire = probed.wire
   tee.out(`wire = ${probed.wire}`)
 
+  // ── Jev decider (jevloop arm only) ──────────────────────────────
+  // The generator probe above covers the writer; the decider is a separate
+  // endpoint, so for the jevloop arm we resolve its key, set meta.decider,
+  // and probe it once — a 200-task run against a dead key is a waste.
+  let jevCfg: JevConfig | null = null
+  if (cli.arm === 'jevloop') {
+    if (!cli.jevKeyFile) throw new Error('jevloop arm needs --jev-key-file (a file with jev_api_key=...)')
+    const jevKey = readJevKey(cli.jevKeyFile)
+    if (!jevKey) throw new Error(`no jev_api_key in ${cli.jevKeyFile} (refusing to run keyless)`)
+    jevCfg = { baseUrl: cli.jevBaseUrl, apiKey: jevKey, model: cli.jevModel, timeoutMs: cli.timeoutS * 1000 }
+    meta.decider = { id: cli.jevModel, version: cli.jevModel, provider: cli.jevBaseUrl }
+    meta.max_steps = cli.maxSteps
+    writeFileSync(join(runDir, 'meta.json'), JSON.stringify(meta, null, 2))
+    tee.out(`probe ${cli.jevBaseUrl} model=${cli.jevModel} (decider)`)
+    const jevProbe = await jevPing(jevCfg)
+    if (!jevProbe.ok) {
+      writeFileSync(join(runDir, 'exit.json'), JSON.stringify({ exit_code: 2, completed: false, interrupted_at: { task: null, step: null }, reason: `jev probe failed: ${jevProbe.reason}` }, null, 2))
+      tee.err(`jev probe failed, aborting: ${jevProbe.reason}`)
+      return 2
+    }
+    tee.out(`jev ok (${jevProbe.model ?? '?'}, ${jevProbe.ms}ms)`)
+  }
+
   const usageRows: (LlmCallResult & { task_id: string; call_index: number })[] = []
   const records: ResultRecord[] = []
   const halted = { stopped: null as { task: string; step: number | null; reason: string } | null, lastTaskId: null as string | null }
@@ -226,65 +276,139 @@ async function main(): Promise<number> {
     const task = tasks[i]!
     halted.lastTaskId = task.id
     const t0 = performance.now()
-    const outcome = await runDirect(cfg, bench, task)
-    const wallMs = performance.now() - t0
-    const success = outcome.call.succeeded && bench.score(task, outcome.answer)
-    usageRows.push({ ...outcome.call, task_id: task.id, call_index: 0 })
-    const record: ResultRecord = {
-      run_id: runId,
-      dataset: cli.dataset,
-      task_id: task.id,
-      arm: cli.arm,
-      seed: cli.seed,
-      model: meta.generator,
-      thinking_budget: 'off',
-      temperature: cli.temperature,
-      top_p: cli.topP,
-      max_tokens: cli.maxTokens,
-      prompt_hash: meta.prompt_hash,
-      dataset_version: bench.version,
-      commit: git.commit,
-      region: cli.region,
-      cold_start: false,
-      success,
-      steps: 1,
-      first_divergence_step: success ? null : 1,
-      escalated: false,
-      gate_false_reject: null,
-      gate_false_deny: null,
-      failure_class: !outcome.call.succeeded ? 'generator_unavailable' : success ? null : 'wrong_answer',
-      llm_calls: 1,
-      decision_requests: 0,
-      questions_per_request: 0,
-      tool_calls: 0,
-      tool_calls_necessary: 0,
-      tool_calls_exploratory: 0,
-      input_tokens_cached: outcome.call.input_tokens_cached,
-      input_tokens_uncached: outcome.call.input_tokens_uncached,
-      output_tokens_reasoning: outcome.call.output_tokens_reasoning,
-      output_tokens_visible: outcome.call.output_tokens_visible,
-      usd: outcome.call.usd,
-      time: {
-        wall_ms: wallMs,
-        model_ms: { handshake: 0, ttft: null, after_ttft: outcome.call.succeeded ? outcome.call.latency_ms : 0 },
-        decision_ms: { handshake: 0, compute: 0 },
-        tool_ms: 0,
-        framework_ms: Math.max(0, wallMs - (outcome.call.latency_ms + outcome.call.retry_ms)),
-        retry_ms: outcome.call.retry_ms,
-        round_trips: outcome.call.succeeded ? 1 : 0,
-      },
-      confidence: null,
-      correct: success,
-      answer: outcome.answer.slice(0, 2000),
-      gold: task.gold[0] ?? '',
+    let record: ResultRecord
+    let statusLine: string
+
+    if (cli.arm === 'direct') {
+      const outcome = await runDirect(cfg, bench, task)
+      const wallMs = performance.now() - t0
+      const success = outcome.call.succeeded && bench.score(task, outcome.answer)
+      usageRows.push({ ...outcome.call, task_id: task.id, call_index: 0 })
+      record = {
+        run_id: runId,
+        dataset: cli.dataset,
+        task_id: task.id,
+        arm: cli.arm,
+        seed: cli.seed,
+        model: meta.generator,
+        thinking_budget: 'off',
+        temperature: cli.temperature,
+        top_p: cli.topP,
+        max_tokens: cli.maxTokens,
+        prompt_hash: meta.prompt_hash,
+        dataset_version: bench.version,
+        commit: git.commit,
+        region: cli.region,
+        cold_start: false,
+        success,
+        steps: 1,
+        first_divergence_step: success ? null : 1,
+        escalated: false,
+        gate_false_reject: null,
+        gate_false_deny: null,
+        failure_class: !outcome.call.succeeded ? 'generator_unavailable' : success ? null : 'wrong_answer',
+        llm_calls: 1,
+        decision_requests: 0,
+        questions_per_request: 0,
+        tool_calls: 0,
+        tool_calls_necessary: 0,
+        tool_calls_exploratory: 0,
+        input_tokens_cached: outcome.call.input_tokens_cached,
+        input_tokens_uncached: outcome.call.input_tokens_uncached,
+        output_tokens_reasoning: outcome.call.output_tokens_reasoning,
+        output_tokens_visible: outcome.call.output_tokens_visible,
+        usd: outcome.call.usd,
+        time: {
+          wall_ms: wallMs,
+          model_ms: { handshake: 0, ttft: null, after_ttft: outcome.call.succeeded ? outcome.call.latency_ms : 0 },
+          decision_ms: { handshake: 0, compute: 0 },
+          tool_ms: 0,
+          framework_ms: Math.max(0, wallMs - (outcome.call.latency_ms + outcome.call.retry_ms)),
+          retry_ms: outcome.call.retry_ms,
+          round_trips: outcome.call.succeeded ? 1 : 0,
+        },
+        confidence: null,
+        correct: success,
+        answer: outcome.answer.slice(0, 2000),
+        gold: task.gold[0] ?? '',
+      }
+      statusLine = `${success ? 'ok  ' : 'MISS'} ${Math.round(wallMs)}ms retry=${outcome.call.retries}${outcome.call.succeeded ? '' : ` err=${outcome.call.error?.slice(0, 120)}`}`
+    } else {
+      // jevloop arm — the kernel loop with Jev as decider, DeepSeek as generator.
+      const outcome = await runJevLoop(cfg, jevCfg!, bench, task, cli.maxSteps)
+      const wallMs = outcome.wallMs
+      // Success halts: the loop finished on its own terms (answered directly,
+      // ran tools then done, or isDone). Failure halts: max_steps, unclear
+      // input/tool, unknown tool, denied authorisation, a failed step. The
+      // `+revise` suffix means the delivery gate asked for another draft —
+      // that is a normal outcome, not a failure.
+      const baseHalt = outcome.halt.split('+')[0] ?? outcome.halt
+      const badHalts = new Set(['max_steps', 'tool_unclear', 'unknown_tool', 'input_unclear', 'denied', 'step_failed'])
+      const clean = !badHalts.has(baseHalt) && !baseHalt.startsWith('error')
+      const success = clean && outcome.answer.length > 0 && bench.score(task, outcome.answer)
+      record = {
+        run_id: runId,
+        dataset: cli.dataset,
+        task_id: task.id,
+        arm: cli.arm,
+        seed: cli.seed,
+        model: meta.generator,
+        thinking_budget: 'off',
+        temperature: cli.temperature,
+        top_p: cli.topP,
+        max_tokens: cli.maxTokens,
+        prompt_hash: meta.prompt_hash,
+        dataset_version: bench.version,
+        commit: git.commit,
+        region: cli.region,
+        cold_start: false,
+        success,
+        steps: outcome.steps,
+        first_divergence_step: success ? null : 1,
+        escalated: outcome.escalated > 0,
+        // gate fired a revision when the model was called twice; whether that
+        // reject was *false* needs the first draft, which the meter does not
+        // keep — recorded as unknown (null) until RQ2 reads trace.jsonl.
+        gate_false_reject: outcome.modelCalls > 1 ? null : false,
+        gate_false_deny: null,
+        failure_class: !clean ? `halt:${outcome.halt}` : success ? null : 'wrong_answer',
+        llm_calls: outcome.modelCalls,
+        decision_requests: outcome.decisionBatches,
+        questions_per_request: outcome.decisionBatches > 0 ? Math.round(outcome.decisionCount / outcome.decisionBatches) : 0,
+        tool_calls: 0,
+        tool_calls_necessary: 0,
+        tool_calls_exploratory: 0,
+        input_tokens_cached: 0,
+        input_tokens_uncached: outcome.inputTokens,
+        output_tokens_reasoning: 0,
+        output_tokens_visible: outcome.outputTokens,
+        usd: 0,
+        time: {
+          wall_ms: wallMs,
+          model_ms: { handshake: 0, ttft: null, after_ttft: outcome.modelMs },
+          decision_ms: { handshake: 0, compute: outcome.decisionMs },
+          tool_ms: 0,
+          framework_ms: Math.max(0, wallMs - outcome.modelMs - outcome.decisionMs),
+          retry_ms: 0,
+          round_trips: outcome.modelCalls + outcome.decisionBatches,
+        },
+        confidence: null,
+        correct: success,
+        answer: outcome.answer.slice(0, 2000),
+        gold: task.gold[0] ?? '',
+      }
+      statusLine = `${success ? 'ok  ' : 'MISS'} ${Math.round(wallMs)}ms m=${outcome.modelCalls} d=${outcome.decisionBatches} halt=${outcome.halt}`
     }
+
     const problems = resultViolations(record as unknown as Record<string, unknown>)
     if (problems.length > 0) throw new Error(`result row missing fields: ${problems.join(', ')}`)
     records.push(record)
     appendFileSync(join(runDir, 'results.jsonl'), `${JSON.stringify(record)}\n`)
     writeFileSync(join(runDir, 'usage.json'), JSON.stringify(usageRows, null, 1))
-    tee.out(`${String(i + 1).padStart(String(tasks.length).length, ' ')}/${tasks.length} ${task.id} ${success ? 'ok  ' : 'MISS'} ${Math.round(wallMs)}ms retry=${outcome.call.retries}${outcome.call.succeeded ? '' : ` err=${outcome.call.error?.slice(0, 120)}`}`)
+    tee.out(`${String(i + 1).padStart(String(tasks.length).length, ' ')}/${tasks.length} ${task.id} ${statusLine}`)
   }
+
+  if (cli.arm === 'jevloop') await disposeJevLoopArm()
 
   const finishedAt = new Date()
   const halt = stopped()
