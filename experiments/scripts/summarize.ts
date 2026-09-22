@@ -90,7 +90,12 @@ function aggregate(dir: string): RunAggregate | null {
   }
   const failureTally: Record<string, number> = {}
   for (const r of rows) {
-    if (r.failure_class) failureTally[r.failure_class] = (failureTally[r.failure_class] ?? 0) + 1
+    if (!r.failure_class) continue
+    // Verbatim 429/transport error strings would each form their own bucket
+    // and make the breakdown unreadable; collapse to one tag. The raw log
+    // keeps the full string.
+    const cls = r.failure_class.startsWith('halt:error') ? 'generator_unavailable' : r.failure_class
+    failureTally[cls] = (failureTally[cls] ?? 0) + 1
   }
   const first = rows[0]!
   return {

@@ -8,5 +8,12 @@ the log dir behind each id holds cmd.txt / meta.json / results.jsonl / usage.jso
 | 2026-09-21T20-39-28-628ZZ-seed0 | gsm8k | direct | DeepSeek-V4.1-Flash | 2 | 100.0% | 206 | 227 | 1380ms | yes |
 | 2026-09-21T20-58-51-436ZZ-seed0 | gsm8k | direct | DeepSeek-V4.1-Flash | 200 | 95.5% | 20055 | 26610 | 1678ms | yes |
 | 2026-09-21T21-51-41-431ZZ-seed0 | gsm8k | direct | DeepSeek-V4.1-Flash | 200 | 96.0% | 20055 | 27694 | 1740ms | yes |
+| 2026-09-22T07-58-37-796ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 2 | 0.0% | 378 | 255 | 6727ms | yes |
+| 2026-09-22T08-00-10-626ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 2 | 0.0% | 0 | 0 | 432ms | yes |
+| 2026-09-22T08-01-21-497ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 2 | 100.0% | 510 | 256 | 17631ms | yes |
+| 2026-09-22T08-03-07-835ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 200 | 72.0% | 33502 | 19871 | 9223ms | yes |
 - failures in 2026-09-21T20-58-51-436ZZ-seed0: wrong_answer=9
 - failures in 2026-09-21T21-51-41-431ZZ-seed0: wrong_answer=8
+- failures in 2026-09-22T07-58-37-796ZZ-seed0: halt:agent_done=1, halt:agent_done+revise=1
+- failures in 2026-09-22T08-00-10-626ZZ-seed0: generator_unavailable=2
+- failures in 2026-09-22T08-03-07-835ZZ-seed0: wrong_answer=33, halt:step_failed+revise=7, halt:tool_unclear+revise=6, halt:tool_unclear=3, generator_unavailable=7

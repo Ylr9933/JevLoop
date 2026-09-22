@@ -371,7 +371,7 @@ async function main(): Promise<number> {
         // keep — recorded as unknown (null) until RQ2 reads trace.jsonl.
         gate_false_reject: outcome.modelCalls > 1 ? null : false,
         gate_false_deny: null,
-        failure_class: !clean ? `halt:${outcome.halt}` : success ? null : 'wrong_answer',
+        failure_class: baseHalt.startsWith('error') ? 'generator_unavailable' : !clean ? `halt:${baseHalt}` : success ? null : 'wrong_answer',
         llm_calls: outcome.modelCalls,
         decision_requests: outcome.decisionBatches,
         questions_per_request: outcome.decisionBatches > 0 ? Math.round(outcome.decisionCount / outcome.decisionBatches) : 0,
