@@ -61,6 +61,7 @@ interface Cli {
   jevBaseUrl: string
   jevModel: string
   maxSteps: number
+  onlyTasks: string[]
 }
 
 function parseArgs(argv: string[]): Cli {
@@ -101,6 +102,7 @@ function parseArgs(argv: string[]): Cli {
     jevBaseUrl: out['jev-base-url'] ?? 'https://api.typesafe.ai',
     jevModel: out['jev-model'] ?? 'jev-latest',
     maxSteps: num('max-steps', 8),
+    onlyTasks: out['only-tasks'] ? out['only-tasks'].split(',').map((s) => s.trim()).filter(Boolean) : [],
   }
 }
 
@@ -180,7 +182,16 @@ async function main(): Promise<number> {
   const startedAt = new Date()
   const git = gitInfo()
   const all: Task[] = await bench.load(join(new URL('..', import.meta.url).pathname, 'dataset', cli.dataset))
-  const tasks = sampleTasks(all, Math.min(cli.limit, all.length), cli.seed)
+  let tasks = sampleTasks(all, Math.min(cli.limit, all.length), cli.seed)
+  // --only-tasks: filter the sampled subset to a comma-separated id list. The
+  // sample is still drawn with the same seed/limit, so --only-tasks stays inside
+  // the same subset the main run used — this is how a partial rerun (e.g. the
+  // tasks that 429'd) is kept paired with the original run, as a NEW run dir.
+  if (cli.onlyTasks.length > 0) {
+    const want = new Set(cli.onlyTasks)
+    tasks = tasks.filter((t) => want.has(t.id))
+    if (tasks.length === 0) throw new Error(`--only-tasks matched nothing in the seed=${cli.seed}/limit=${cli.limit} sample`)
+  }
   const firstPrompt = bench.prompts.build(tasks[0] as Task)
 
   const meta: RunMeta = {
