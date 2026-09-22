@@ -7,3 +7,4 @@ run_id,dataset,arm,model,tasks,succeeded,accuracy,tokens_in,tokens_out,usd,wall_
 2026-09-22T08-00-10-626ZZ-seed0,gsm8k,jevloop,DeepSeek-V4.1-Flash,2,0,0.0000,0,0,0.000000,432,true
 2026-09-22T08-01-21-497ZZ-seed0,gsm8k,jevloop,DeepSeek-V4.1-Flash,2,2,1.0000,510,256,0.000000,17631,true
 2026-09-22T08-03-07-835ZZ-seed0,gsm8k,jevloop,DeepSeek-V4.1-Flash,200,144,0.7200,33502,19871,0.000000,9223,true
+2026-09-22T09-00-00-852ZZ-seed0,gsm8k,jevloop,DeepSeek-V4.1-Flash,7,2,0.2857,1723,1102,0.000000,7738,true

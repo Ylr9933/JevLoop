@@ -12,8 +12,10 @@ the log dir behind each id holds cmd.txt / meta.json / results.jsonl / usage.jso
 | 2026-09-22T08-00-10-626ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 2 | 0.0% | 0 | 0 | 432ms | yes |
 | 2026-09-22T08-01-21-497ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 2 | 100.0% | 510 | 256 | 17631ms | yes |
 | 2026-09-22T08-03-07-835ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 200 | 72.0% | 33502 | 19871 | 9223ms | yes |
+| 2026-09-22T09-00-00-852ZZ-seed0 | gsm8k | jevloop | DeepSeek-V4.1-Flash | 7 | 28.6% | 1723 | 1102 | 7738ms | yes |
 - failures in 2026-09-21T20-58-51-436ZZ-seed0: wrong_answer=9
 - failures in 2026-09-21T21-51-41-431ZZ-seed0: wrong_answer=8
 - failures in 2026-09-22T07-58-37-796ZZ-seed0: halt:agent_done=1, halt:agent_done+revise=1
 - failures in 2026-09-22T08-00-10-626ZZ-seed0: generator_unavailable=2
 - failures in 2026-09-22T08-03-07-835ZZ-seed0: wrong_answer=33, halt:step_failed+revise=7, halt:tool_unclear+revise=6, halt:tool_unclear=3, generator_unavailable=7
+- failures in 2026-09-22T09-00-00-852ZZ-seed0: wrong_answer=4, halt:tool_unclear=1
